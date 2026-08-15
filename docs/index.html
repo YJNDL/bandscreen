@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="author" content="ABP">
+  <title>ABP · Automated Band-topology Parsing</title>
+  <meta name="description" content="ABP (bandscreen) parses band gap, direct/indirect character, band-edge curvature and image-estimated effective mass directly from band-structure figures for high-throughput materials screening.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0c1b31">
+  <link rel="icon" href="images/favicon.png">
+  <style>
+    :root {
+      --page: #f2f6fb;
+      --paper: #ffffff;
+      --paper-soft: #f7faff;
+      --ink: #101b30;
+      --muted: #5a6a86;
+      --line: #dbe4f0;
+      --line-strong: #c6d3e4;
+      --navy: #0c1b31;
+      --navy-2: #10304f;
+      --blue: #0b4fc8;
+      --azure: #0a8fcd;
+      --azure-dark: #086b9e;
+      --teal: #26d1b7;
+      --teal-dark: #0d8f85;
+      --grad-accent: linear-gradient(120deg, #0b4fc8 0%, #0a8fcd 48%, #26d1b7 100%);
+      --radius: 14px;
+      --radius-sm: 10px;
+      --shadow-sm: 0 1px 2px rgba(16, 30, 55, 0.05), 0 6px 18px rgba(16, 30, 55, 0.05);
+      --shadow-md: 0 2px 4px rgba(16, 30, 55, 0.05), 0 14px 34px rgba(16, 30, 55, 0.09);
+      --shadow-lift: 0 4px 10px rgba(16, 30, 55, 0.06), 0 22px 48px rgba(16, 30, 55, 0.13);
+    }
+    ::selection { color: #fff; background: var(--azure); }
+    * { box-sizing: border-box; }
+    html { min-height: 100%; background: var(--page); -webkit-font-smoothing: antialiased; scroll-behavior: smooth; }
+    body {
+      min-height: 100%; width: 100%; margin: 0;
+      color: var(--ink); background-color: var(--page);
+      background-image:
+        linear-gradient(rgba(14, 32, 56, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(14, 32, 56, 0.045) 1px, transparent 1px);
+      background-size: 32px 32px;
+      font-family: Arial, "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 16px; line-height: 1.65; overflow-x: hidden;
+    }
+    body:before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: -1;
+      background:
+        radial-gradient(900px 520px at 88% -6%, rgba(38, 209, 183, 0.12), transparent 62%),
+        radial-gradient(760px 480px at 30% 108%, rgba(11, 79, 200, 0.06), transparent 60%),
+        linear-gradient(180deg, rgba(255,255,255, 0.82) 0%, rgba(243,247,251, 0.92) 45%, rgba(238,244,250, 0.96) 100%);
+    }
+    p { margin: 1em 0; color: var(--muted); font-size: 1rem; line-height: 1.7; }
+    a { color: var(--azure-dark); text-decoration: none; transition: color .18s ease, border-color .18s ease, background-color .18s ease, transform .18s ease; }
+    a:hover, a:active { color: var(--blue); }
+    img { max-width: 100%; height: auto; }
+    code {
+      padding: 1px 6px; border: 1px solid var(--line); border-radius: 6px;
+      background: var(--paper-soft); color: #0f3d6e;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: .88em;
+    }
+    pre code { padding: 0; border: 0; background: none; color: inherit; font-size: inherit; }
+    .icon { width: 1em; height: 1em; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; vertical-align: -0.12em; flex: 0 0 auto; }
+    .skip-link {
+      position: absolute; top: -48px; left: 16px; z-index: 20; padding: 8px 14px;
+      background: var(--navy); color: #fff; border-radius: 8px; transition: top .2s ease;
+    }
+    .skip-link:focus { top: 12px; color: #fff; }
+
+    /* entrance + scroll reveal */
+    .animated { animation-fill-mode: both; animation-duration: .55s; }
+    @keyframes fadeInDown { 0% { opacity: 0; transform: translateY(-10px); } 100% { opacity: 1; transform: translateY(0); } }
+    .fadeInDown { animation-name: fadeInDown; }
+    .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+    .reveal.is-visible { opacity: 1; transform: translateY(0); }
+    @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } .animated { animation: none; } }
+
+    /* ------------------------------ top bar ------------------------------ */
+    .page-top {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      position: fixed; top: 0; right: 0; z-index: 3;
+      width: calc(100% - 360px); padding: 0 22px;
+      background: rgba(255, 255, 255, 0.88); backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+    }
+    .top-brand { display: inline-flex; align-items: baseline; gap: 8px; flex: 0 0 auto; color: var(--ink); font-weight: 700; letter-spacing: .04em; }
+    .top-brand span { font-size: 1.05rem; }
+    .top-brand small {
+      padding: 2px 8px; border-radius: 999px; font-size: .68rem; font-weight: 700; letter-spacing: .08em;
+      color: #fff; background: var(--grad-accent);
+    }
+    .page-top nav { min-width: 0; }
+    .page-top .nav { display: flex; align-items: center; gap: 8px; min-height: 64px; margin: 0; padding: 0; list-style: none; overflow-x: auto; }
+    .page-top .nav li { white-space: nowrap; }
+    .page-top .nav a {
+      position: relative; display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px;
+      border: 1px solid transparent; border-radius: 9px; color: #42516c; font-size: .92rem; font-weight: 600;
+    }
+    .page-top .nav a:after {
+      content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 2px;
+      background: var(--grad-accent); opacity: 0; transform: scaleX(.4); transition: opacity .18s ease, transform .18s ease;
+    }
+    .page-top .nav a:hover, .page-top .nav a.current { color: var(--azure-dark); background: #eef7fb; border-color: #cfe7f2; }
+    .page-top .nav a.current:after { opacity: 1; transform: scaleX(1); }
+
+    /* ------------------------------ sidebar ------------------------------ */
+    .sidebar {
+      position: fixed; inset: 0 auto 0 0; z-index: 4; width: 360px; min-height: 100vh;
+      display: flex; flex-direction: column; justify-content: space-between;
+      color: #e8f1f8;
+      background:
+        radial-gradient(520px 320px at 85% -60px, rgba(38, 209, 183, 0.16), transparent 60%),
+        radial-gradient(560px 420px at -80px 105%, rgba(10, 143, 205, 0.18), transparent 62%),
+        linear-gradient(168deg, #0c1b31 0%, #0e2440 52%, #0c1b31 100%);
+      overflow-y: auto;
+    }
+    .side-content { padding: 34px 30px 20px; }
+    .eyebrow {
+      display: inline-block; margin-bottom: 14px; padding: 5px 11px;
+      border: 1px solid rgba(148, 208, 234, 0.35); border-radius: 999px;
+      color: #9fd9e8; font-size: .68rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    }
+    .brand-card {
+      display: block; padding: 18px 18px 14px; border-radius: var(--radius);
+      background: #ffffff; box-shadow: 0 14px 34px rgba(3, 12, 26, 0.45);
+    }
+    .brand-card img { display: block; width: 100%; height: auto; }
+    .sidebar h3 { margin: 16px 0 0; font-size: 1.5rem; letter-spacing: .02em; }
+    .sidebar h3 a { color: #ffffff; }
+    .sidebar h3 small { margin-left: 8px; color: #8fb4cd; font-size: .85rem; font-weight: 400; letter-spacing: .05em; }
+    .sidebar .description { margin: 10px 0 0; color: #b9cde0; font-size: .93rem; line-height: 1.65; }
+    .sidebar-badges { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+    .sidebar-badges span {
+      padding: 4px 10px; border: 1px solid rgba(148, 208, 234, 0.28); border-radius: 999px;
+      background: rgba(16, 48, 79, 0.55); color: #a9d7e6; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    }
+    .sidebar-panel {
+      margin-top: 18px; padding: 13px 15px; border: 1px solid rgba(148, 208, 234, 0.22);
+      border-radius: var(--radius-sm); background: rgba(9, 25, 45, 0.6);
+    }
+    .panel-label { color: #79a3bf; font-size: .68rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+    .panel-value { margin-top: 4px; color: #6fe3cf; font-family: Consolas, Menlo, monospace; font-size: .95rem; font-weight: 700; }
+    .panel-text { margin-top: 6px; color: #a7bdd2; font-size: .8rem; line-height: 1.55; }
+    .social-links { margin: 20px 0 0; padding: 0; list-style: none; }
+    .social-links li + li { margin-top: 4px; }
+    .social-links a {
+      display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px;
+      color: #c4d8e8; font-size: .9rem;
+    }
+    .social-links a:hover { color: #ffffff; background: rgba(20, 55, 88, 0.6); }
+    .social-links .icon { width: 1.05em; height: 1.05em; color: #6fc4dd; }
+    .sidebar .footer { padding: 18px 30px 26px; color: #7d9ab3; font-size: .78rem; line-height: 1.7; }
+
+    /* ------------------------------ content shell ------------------------------ */
+    .content { margin-left: 360px; padding: 96px 34px 40px; }
+    .post { max-width: 1060px; margin: 0 auto; }
+
+    /* hero */
+    .post-title { margin-bottom: 26px; }
+    .hero-grid {
+      display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 26px; align-items: stretch;
+      padding: 30px 32px; border: 1px solid var(--line); border-radius: 18px;
+      background:
+        radial-gradient(560px 300px at 100% 0%, rgba(38, 209, 183, 0.10), transparent 60%),
+        radial-gradient(480px 300px at 0% 110%, rgba(11, 79, 200, 0.07), transparent 62%),
+        linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+      box-shadow: var(--shadow-md);
+    }
+    .release-kicker {
+      display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px;
+      border: 1px solid #cfe7f2; border-radius: 999px; background: #eef8fb;
+      color: var(--azure-dark); font-size: .74rem; font-weight: 700; letter-spacing: .06em;
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 4px rgba(38, 209, 183, 0.18); }
+    .hero-copy h1 { margin: 14px 0 0; font-size: 3rem; letter-spacing: .01em; line-height: 1.05; }
+    .hero-copy h1 span {
+      background: var(--grad-accent); -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .hero-subtitle { margin: 8px 0 0; color: var(--ink); font-size: 1.16rem; font-weight: 600; }
+    .hero-description { margin: 10px 0 0; font-size: .98rem; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    .button {
+      display: inline-flex; align-items: center; gap: 9px; min-height: 42px; padding: 0 18px;
+      border-radius: 11px; font-size: .93rem; font-weight: 700; letter-spacing: .01em;
+    }
+    .button-primary { color: #ffffff; background: var(--grad-accent); box-shadow: 0 10px 24px rgba(10, 116, 180, 0.32); }
+    .button-primary:hover { color: #ffffff; transform: translateY(-1px); box-shadow: 0 14px 30px rgba(10, 116, 180, 0.4); }
+    .button-secondary { color: var(--ink); border: 1px solid var(--line-strong); background: #ffffff; }
+    .button-secondary:hover { color: var(--azure-dark); border-color: #b5daea; background: #f2fafc; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 18px; color: var(--muted); font-size: .82rem; }
+    .hero-meta span { display: inline-flex; align-items: center; gap: 7px; }
+    .hero-meta .icon { color: var(--azure); }
+
+    .hero-pipeline {
+      display: flex; flex-direction: column; justify-content: center; gap: 8px;
+      padding: 18px; border: 1px solid var(--line); border-radius: var(--radius);
+      background: linear-gradient(180deg, #fbfdff, #f3f9fd);
+    }
+    .pipeline-label { color: var(--muted); font-size: .68rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+    .pipeline-step {
+      display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+      border: 1px solid var(--line); border-radius: var(--radius-sm); background: #ffffff; box-shadow: var(--shadow-sm);
+    }
+    .pipeline-step .icon { width: 1.25em; height: 1.25em; color: var(--azure); }
+    .pipeline-step span { display: block; color: var(--muted); font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    .pipeline-step strong { display: block; color: var(--ink); font-size: .85rem; line-height: 1.35; }
+    .pipeline-arrow { align-self: center; color: #9db4d0; }
+    .pipeline-step-output { border-color: #bfe9de; background: linear-gradient(180deg, #f2fdfa, #e9faf5); }
+    .pipeline-step-output .icon { color: var(--teal-dark); }
+
+    /* sections */
+    .content-section { margin-top: 46px; scroll-margin-top: 88px; }
+    #abp { scroll-margin-top: 110px; }
+    .section-heading { max-width: 720px; }
+    .section-kicker {
+      display: inline-block; padding: 4px 11px; border: 1px solid #cfe7f2; border-radius: 999px;
+      background: #eef8fb; color: var(--azure-dark); font-size: .7rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    }
+    .section-heading h2 { margin: 12px 0 0; font-size: 1.7rem; line-height: 1.25; }
+    .section-heading p { margin: 10px 0 0; font-size: .97rem; }
+
+    .value-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 22px; }
+    .value-card {
+      padding: 18px; border: 1px solid var(--line); border-radius: var(--radius);
+      background: #ffffff; box-shadow: var(--shadow-sm); transition: transform .18s ease, box-shadow .18s ease;
+    }
+    .value-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+    .value-card .icon {
+      width: 2.1em; height: 2.1em; padding: 9px; border-radius: 10px; color: #ffffff; background: var(--grad-accent);
+    }
+    .value-card h3 { margin: 12px 0 0; font-size: 1.02rem; }
+    .value-card p { margin: 7px 0 0; font-size: .88rem; }
+
+    /* showcase */
+    .showcase {
+      margin-top: 22px; padding: 18px; border: 1px solid var(--line); border-radius: 16px;
+      background: #ffffff; box-shadow: var(--shadow-md);
+    }
+    .showcase img { display: block; width: 100%; border: 1px solid var(--line); border-radius: 10px; }
+    .showcase-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .showcase-chips span {
+      padding: 4px 11px; border: 1px solid #cfe7f2; border-radius: 999px; background: #f2fafc;
+      color: #14526e; font-family: Consolas, Menlo, monospace; font-size: .76rem; font-weight: 600;
+    }
+    .showcase-caption { margin: 10px 0 0; font-size: .84rem; }
+
+    .release-banner {
+      display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 20px; align-items: center;
+      margin-top: 22px; padding: 20px 22px; border: 1px solid #cfe7f2; border-radius: var(--radius);
+      background: linear-gradient(120deg, #f0fbf8 0%, #eef7fd 100%); box-shadow: var(--shadow-sm);
+    }
+    .release-version {
+      padding: 10px 16px; border-radius: 12px; color: #ffffff; background: var(--grad-accent);
+      font-size: 1.1rem; font-weight: 800; letter-spacing: .04em; box-shadow: 0 10px 22px rgba(10, 116, 180, 0.3);
+    }
+    .release-copy span { color: var(--azure-dark); font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .release-copy h3 { margin: 4px 0 0; font-size: 1.08rem; }
+    .release-copy p { margin: 6px 0 0; font-size: .88rem; }
+    .release-history summary { color: var(--azure-dark); font-size: .84rem; font-weight: 700; cursor: pointer; }
+    .release-history ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: .84rem; line-height: 1.7; }
+
+    /* workflow rail */
+    .workflow-rail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 22px; }
+    .workflow-rail-item-wide { grid-column: 1 / -1; }
+    .workflow-rail-card {
+      position: relative; height: 100%; padding: 18px 18px 16px; overflow: hidden;
+      border: 1px solid var(--line); border-radius: var(--radius); background: #ffffff; box-shadow: var(--shadow-sm);
+      transition: transform .18s ease, box-shadow .18s ease;
+    }
+    .workflow-rail-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+    .workflow-rail-watermark {
+      position: absolute; top: -14px; right: 6px; color: rgba(11, 79, 200, 0.07);
+      font-size: 4.4rem; font-weight: 800; letter-spacing: -.04em; pointer-events: none;
+    }
+    .workflow-rail-head { display: flex; align-items: flex-start; gap: 12px; }
+    .workflow-rail-icon {
+      display: inline-flex; padding: 9px; border-radius: 10px; color: #ffffff; background: var(--grad-accent);
+    }
+    .workflow-rail-icon .icon { width: 1.2em; height: 1.2em; }
+    .workflow-rail-title h3 { margin: 0; font-size: 1rem; }
+    .workflow-rail-chip {
+      display: inline-block; margin-top: 5px; padding: 2px 9px; border: 1px solid #cfe7f2; border-radius: 999px;
+      background: #f2fafc; color: #14526e; font-family: Consolas, Menlo, monospace; font-size: .7rem; font-weight: 600;
+    }
+    .workflow-rail-card > p { margin: 10px 0 0; font-size: .87rem; }
+    .workflow-rail-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+    .workflow-rail-tags span {
+      padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper-soft);
+      color: #46608a; font-family: Consolas, Menlo, monospace; font-size: .7rem;
+    }
+    .workflow-spec-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+    .workflow-spec-card {
+      padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+      background: linear-gradient(180deg, #ffffff, #f6fafe); box-shadow: var(--shadow-sm);
+    }
+    .workflow-spec-label { color: var(--muted); font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    .workflow-spec-value { margin-top: 4px; color: #0f3d6e; font-family: Consolas, Menlo, monospace; font-size: .86rem; font-weight: 700; }
+
+    /* quick start */
+    .start-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 22px; align-items: start; }
+    .start-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+    .start-steps li {
+      display: flex; gap: 14px; padding: 15px 16px; border: 1px solid var(--line); border-radius: var(--radius);
+      background: #ffffff; box-shadow: var(--shadow-sm);
+    }
+    .start-steps li > span {
+      flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+      width: 34px; height: 34px; border-radius: 10px; color: #fff; background: var(--grad-accent);
+      font-size: .8rem; font-weight: 800;
+    }
+    .start-steps h3 { margin: 1px 0 0; font-size: .98rem; }
+    .start-steps p { margin: 5px 0 0; font-size: .86rem; }
+    .command-console { border: 1px solid #14304d; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-md); }
+    .console-head {
+      display: flex; align-items: center; justify-content: space-between; padding: 10px 16px;
+      color: #9fd9e8; background: #0e2440; font-size: .8rem; font-weight: 700; letter-spacing: .05em;
+    }
+    .console-head small { color: #6d8faa; font-weight: 400; }
+    .command-console pre {
+      margin: 0; padding: 16px 18px; background: #0c1b31; color: #d7e9f5; overflow-x: auto;
+      font-family: "SFMono-Regular", Consolas, Menlo, monospace; font-size: .84rem; line-height: 1.75;
+    }
+    .command-console .cmd-comment { color: #5f7f9c; }
+    .command-console .cmd-accent { color: #6fe3cf; }
+    .console-note {
+      display: flex; align-items: center; gap: 9px; padding: 10px 16px;
+      background: #0e2440; color: #8fb4cd; font-size: .78rem;
+    }
+    .console-note .icon { color: var(--teal); }
+    .run-mode-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+    .run-mode-card {
+      display: flex; gap: 12px; padding: 15px 16px; border: 1px solid var(--line); border-radius: var(--radius);
+      background: #ffffff; box-shadow: var(--shadow-sm);
+    }
+    .run-mode-card > .icon { width: 1.5em; height: 1.5em; margin-top: 2px; color: var(--azure); }
+    .run-mode-card h3 { margin: 0; font-size: .95rem; }
+    .run-mode-card code { display: inline-block; margin-top: 7px; font-size: .74rem; line-height: 1.5; }
+    .run-mode-card p { margin: 6px 0 0; font-size: .8rem; }
+
+    /* outputs */
+    .output-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 22px; }
+    .output-card {
+      display: flex; gap: 14px; padding: 16px 17px; border: 1px solid var(--line); border-radius: var(--radius);
+      background: #ffffff; box-shadow: var(--shadow-sm); transition: transform .18s ease, box-shadow .18s ease;
+    }
+    .output-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+    .output-card > .icon { width: 1.6em; height: 1.6em; margin-top: 2px; color: var(--azure); }
+    .output-card span { display: block; color: var(--muted); font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    .output-card code { display: inline-block; margin-top: 4px; font-size: .8rem; }
+    .output-card p { margin: 6px 0 0; font-size: .84rem; }
+    .output-card-accent { border-color: #bfe9de; background: linear-gradient(180deg, #f4fdfa, #ecfaf5); }
+    .output-card-accent > .icon { color: var(--teal-dark); }
+    .scope-note {
+      display: flex; gap: 14px; margin-top: 16px; padding: 16px 18px;
+      border: 1px solid #f0dcbe; border-radius: var(--radius); background: #fdf8ee; box-shadow: var(--shadow-sm);
+    }
+    .scope-note > .icon { width: 1.5em; height: 1.5em; margin-top: 2px; color: #b07c2e; }
+    .scope-note strong { color: #5c4a22; }
+    .scope-note p { margin: 4px 0 0; color: #6d5c37; font-size: .85rem; }
+
+    /* modules */
+    .module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
+    .module-card {
+      display: flex; gap: 12px; padding: 13px 15px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+      background: #ffffff; box-shadow: var(--shadow-sm);
+    }
+    .module-card > .icon { width: 1.3em; height: 1.3em; margin-top: 3px; color: var(--azure); }
+    .module-card code { border: 0; background: none; padding: 0; color: #0f3d6e; font-size: .87rem; font-weight: 700; }
+    .module-card p { margin: 3px 0 0; font-size: .8rem; }
+    .entry-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+    .entry-card {
+      display: flex; align-items: center; gap: 14px; padding: 16px 18px;
+      border: 1px solid var(--line); border-radius: var(--radius); background: #ffffff; box-shadow: var(--shadow-sm);
+      transition: transform .18s ease, box-shadow .18s ease;
+    }
+    .entry-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+    .entry-type {
+      flex: 0 0 auto; padding: 8px 11px; border-radius: 9px; color: #fff; background: var(--grad-accent);
+      font-size: .72rem; font-weight: 800; letter-spacing: .06em;
+    }
+    .entry-card small { display: block; color: var(--muted); font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .entry-card h3 { margin: 2px 0 0; font-size: .98rem; font-family: Consolas, Menlo, monospace; }
+    .entry-card p { margin: 4px 0 0; font-size: .82rem; }
+    .entry-card > .icon { margin-left: auto; color: #9db4d0; }
+    .entry-card:hover > .icon { color: var(--azure-dark); }
+    .environment-strip {
+      display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 18px; padding: 14px 18px;
+      border: 1px solid var(--line); border-radius: var(--radius-sm); background: #ffffff;
+      color: var(--muted); font-size: .84rem; box-shadow: var(--shadow-sm);
+    }
+    .environment-strip strong { color: var(--ink); }
+
+    .article-footer {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      margin-top: 46px; padding: 18px 2px 6px; border-top: 1px solid var(--line);
+      color: var(--muted); font-size: .86rem;
+    }
+    .article-footer a { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
+
+    /* ------------------------------ responsive ------------------------------ */
+    @media (max-width: 1240px) {
+      .hero-grid { grid-template-columns: 1fr; }
+      .hero-pipeline { flex-direction: row; flex-wrap: wrap; align-items: center; }
+      .pipeline-arrow { transform: rotate(-90deg); }
+    }
+    @media (max-width: 1080px) {
+      .sidebar { position: static; width: 100%; min-height: 0; }
+      .side-content { padding: 30px 26px 12px; }
+      .brand-card { max-width: 320px; }
+      .content { margin-left: 0; padding: 24px 20px 34px; }
+      .page-top { position: static; width: 100%; }
+      .value-grid, .run-mode-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 760px) {
+      .value-grid, .workflow-rail, .start-grid, .run-mode-grid, .output-grid, .module-grid, .entry-grid { grid-template-columns: 1fr; }
+      .workflow-spec-strip { grid-template-columns: 1fr 1fr; }
+      .release-banner { grid-template-columns: 1fr; }
+      .hero-copy h1 { font-size: 2.3rem; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-github" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65S8.93 17.38 9 18v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
+      <symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+      <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m7 13 3.5-6L14 12l3-5 3.5 4"/></symbol>
+      <symbol id="i-atom" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.2"/><path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5Z"/><path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5Z"/></symbol>
+      <symbol id="i-ruler" viewBox="0 0 24 24"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.4 2.4 0 0 1 0-3.4l2.6-2.6a2.4 2.4 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></symbol>
+      <symbol id="i-fit" viewBox="0 0 24 24"><path d="M3 21c8 0 4-16 9-16s1 16 9 16"/><path d="M12 3v4"/></symbol>
+      <symbol id="i-filter" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></symbol>
+      <symbol id="i-table" viewBox="0 0 24 24"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-flask" viewBox="0 0 24 24"><path d="M10 2v7.53a2 2 0 0 1-.24.95L4.3 20.28A2 2 0 0 0 6.07 23h11.86a2 2 0 0 0 1.77-2.72l-5.46-9.8a2 2 0 0 1-.24-.95V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></symbol>
+      <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.18-9.17 4.16a2 2 0 0 1-1.66 0L2 12.18"/><path d="m22 17.18-9.17 4.16a2 2 0 0 1-1.66 0L2 17.18"/></symbol>
+      <symbol id="i-cpu" viewBox="0 0 24 24"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M21.8 10A10 10 0 1 1 17 3.34"/><path d="m9 11 3 3L22 4"/></symbol>
+      <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></symbol>
+      <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></symbol>
+      <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+      <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/></symbol>
+    </defs>
+  </svg>
+
+  <a class="skip-link" href="#overview">Skip to content</a>
+
+  <header class="page-top animated fadeInDown">
+    <a class="top-brand" href="#abp" aria-label="ABP home">
+      <span>ABP</span>
+      <small>bandscreen</small>
+    </a>
+    <nav aria-label="Page sections">
+      <ul class="nav">
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#workflow">Pipeline</a></li>
+        <li><a href="#usage">Quick Start</a></li>
+        <li><a href="#outputs">Outputs</a></li>
+        <li><a href="#modules">Modules</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <aside class="sidebar animated fadeInDown">
+    <div class="side-content">
+      <div class="logo-title">
+        <div class="title">
+          <div class="eyebrow">Band-structure Screening Toolkit</div>
+          <a class="brand-card" href="#abp" aria-label="ABP logo">
+            <img src="images/logo.png" alt="ABP — Automated band-topology parsing logo">
+          </a>
+          <h3><a href="#abp">ABP</a><small>· bandscreen</small></h3>
+        </div>
+        <p class="description">
+          Parse band gap, direct / indirect character, band-edge curvature and image-estimated
+          effective mass straight from band-structure figures — built for high-throughput
+          materials pre-screening.
+        </p>
+        <div class="sidebar-badges" aria-label="Core capabilities">
+          <span>Gap &amp; m* from pixels</span>
+          <span>Any literature figure</span>
+          <span>Γ-aware OCR</span>
+        </div>
+        <div class="sidebar-panel">
+          <div class="panel-label">Batch Entry</div>
+          <div class="panel-value">band_screen.py</div>
+          <div class="panel-text">Interactive batch screening over <code style="background:none;border:0;color:#8fd8e8;padding:0">input/</code> DAT &amp; HDF5 data; single-figure analysis via <code style="background:none;border:0;color:#8fd8e8;padding:0">analyze_band_image.py</code>.</div>
+        </div>
+      </div>
+      <ul class="social-links">
+        <li><a target="_blank" rel="noopener" href="https://github.com/YJNDL/bandscreen"><svg class="icon"><use href="#i-github"/></svg>Project Repository</a></li>
+        <li><a href="mailto:arvin_huang@szu.edu.cn"><svg class="icon"><use href="#i-mail"/></svg>arvin_huang@szu.edu.cn</a></li>
+        <li><a href="mailto:zhongyongle927@gmail.com"><svg class="icon"><use href="#i-mail"/></svg>zhongyongle927@gmail.com</a></li>
+      </ul>
+    </div>
+    <div class="footer">
+      <div><span>© 2026 ABP · bandscreen</span></div>
+      <div><span>Published with GitHub Pages</span></div>
+    </div>
+  </aside>
+
+  <main class="content">
+    <article class="post animated fadeInDown" id="abp">
+      <header class="post-title">
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <div class="release-kicker"><span class="status-dot"></span>Modular package · replaces legacy v7 / v8 scripts</div>
+            <h1><span>ABP</span></h1>
+            <p class="hero-subtitle">Automated band-topology parsing for band-structure images.</p>
+            <p class="hero-description">ABP reads the figure itself: OCR-calibrated axes, per-segment k-path calibration and fixed-vertex quadratic fits turn plotted bands into band gaps, direct / indirect labels, edge curvatures and image-estimated effective masses — fast enough to screen materials in batches.</p>
+            <div class="hero-actions">
+              <a class="button button-primary" target="_blank" rel="noopener" href="https://github.com/YJNDL/bandscreen"><svg class="icon"><use href="#i-github"/></svg>View Repository</a>
+              <a class="button button-secondary" href="#usage"><svg class="icon"><use href="#i-terminal"/></svg>Quick Start</a>
+            </div>
+            <div class="hero-meta" aria-label="Project facts">
+              <span><svg class="icon"><use href="#i-cpu"/></svg>Python 3 · OpenCV · Tesseract</span>
+              <span><svg class="icon"><use href="#i-image"/></svg>Works from the image alone</span>
+              <span><svg class="icon"><use href="#i-filter"/></svg>Metal · gap · |C| screening</span>
+            </div>
+          </div>
+
+          <div class="hero-pipeline" aria-label="ABP production path">
+            <div class="pipeline-label">Production path</div>
+            <div class="pipeline-step">
+              <svg class="icon"><use href="#i-file"/></svg>
+              <div><span>Input</span><strong>DAT / HDF5 — or any band figure</strong></div>
+            </div>
+            <svg class="icon pipeline-arrow"><use href="#i-arrow-down"/></svg>
+            <div class="pipeline-step">
+              <svg class="icon"><use href="#i-scan"/></svg>
+              <div><span>Parse</span><strong>OCR axes → extract → calibrate → fit</strong></div>
+            </div>
+            <svg class="icon pipeline-arrow"><use href="#i-arrow-down"/></svg>
+            <div class="pipeline-step pipeline-step-output">
+              <svg class="icon"><use href="#i-table"/></svg>
+              <div><span>Output</span><strong>Gap · direct/indirect · |C| · m* · hit folders</strong></div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="post-content">
+        <section class="content-section" id="overview">
+          <div class="section-heading">
+            <span class="section-kicker">Overview</span>
+            <h2>From a plotted band structure to screening descriptors</h2>
+            <p>ABP is built for fast pre-screening before higher-cost first-principles follow-up. Every number it reports is an image-derived approximate descriptor with a debug overlay to check — not a replacement for rigorous effective-mass or mobility calculations on the raw band data.</p>
+          </div>
+
+          <div class="value-grid">
+            <article class="value-card">
+              <svg class="icon"><use href="#i-scan"/></svg>
+              <h3>Read the figure alone</h3>
+              <p>Y-axis energy ticks are OCR'd and RANSAC-repaired; high-symmetry labels are recognized per glyph with bilingual eng + ell voting, so Γ survives. The crystal structure is the only declared external input.</p>
+            </article>
+            <article class="value-card">
+              <svg class="icon"><use href="#i-ruler"/></svg>
+              <h3>Calibrate with real physics</h3>
+              <p>Structure-side segment lengths (Å⁻¹) plus detected separator lines build a piecewise-linear q↔k map, so curvature C = 2A and m*/m₀ = 7.62 / |C| come out in physical units.</p>
+            </article>
+            <article class="value-card">
+              <svg class="icon"><use href="#i-filter"/></svg>
+              <h3>Screen in batches</h3>
+              <p>Metallicity rejection, band-gap window, direct-gap tolerance, |C| range and near-linear high-dispersion flags sort every material into traceable, categorized hit folders.</p>
+            </article>
+          </div>
+
+          <figure class="showcase" style="margin-left:0;margin-right:0">
+            <img src="images/showcase.png" alt="InSb band structure with ABP fixed-vertex quadratic fits overlaid at the CBM and VBM">
+            <div class="showcase-chips">
+              <span>InSb</span>
+              <span>gap = 0.359 eV</span>
+              <span>L = 2.1570 Å⁻¹</span>
+              <span>m* CBM L/R = 0.02 / 0.02</span>
+              <span>m* VBM L/R = 0.68 / 0.47</span>
+            </div>
+            <figcaption class="showcase-caption">Debug overlay written for every processed figure: fixed-vertex quadratic fits at the CBM (red / magenta) and VBM (cyan / green), with the recovered gap, path length and direction-resolved effective masses in the header.</figcaption>
+          </figure>
+
+          <div class="release-banner" id="whats-new">
+            <div class="release-version">NEW</div>
+            <div class="release-copy">
+              <span>Current state</span>
+              <h3>One modular package replaces the single-file v7 / v8 scripts</h3>
+              <p>Ten focused modules under <code>bandscreen/</code> with two thin CLI entry points. Batch outputs are regression-locked: the 37-material baseline reproduces the pre-refactor results column by column.</p>
+            </div>
+            <details class="release-history">
+              <summary>Validation</summary>
+              <ul>
+                <li>k-path segment lengths self-tested against closed forms (fcc Γ–X = 2π/a).</li>
+                <li>Synthetic literature-style figures with known curvature recovered end-to-end within ±10%.</li>
+                <li>37-material batch output identical to the pre-refactor baseline.</li>
+              </ul>
+            </details>
+          </div>
+        </section>
+
+        <section class="content-section" id="workflow">
+          <div class="section-heading">
+            <span class="section-kicker">Pipeline</span>
+            <h2>Seven linked parsing stages</h2>
+            <p>Each stage keeps the evidence the next one needs — segment metadata, pixel envelopes, calibration diagnostics — so the final ranking stays reproducible and checkable.</p>
+          </div>
+
+          <div class="workflow-rail">
+            <article class="workflow-rail-item">
+              <div class="workflow-rail-card">
+                <div class="workflow-rail-watermark">01</div>
+                <div class="workflow-rail-head">
+                  <span class="workflow-rail-icon"><svg class="icon"><use href="#i-image"/></svg></span>
+                  <div class="workflow-rail-title"><h3>Render Standardized Figures</h3><span class="workflow-rail-chip">render</span></div>
+                </div>
+                <p>Convert <code>input/</code> DAT and HDF5 band data into uniform PNGs — the only stage allowed to touch raw data — and record each material's segment boundaries as metadata.</p>
+                <div class="workflow-rail-tags"><span>300 dpi</span><span>kpath_segments.json</span></div>
+              </div>
+            </article>
+
+            <article class="workflow-rail-item">
+              <div class="workflow-rail-card">
+                <div class="workflow-rail-watermark">02</div>
+                <div class="workflow-rail-head">
+                  <span class="workflow-rail-icon"><svg class="icon"><use href="#i-scan"/></svg></span>
+                  <div class="workflow-rail-title"><h3>Detect Plot Box, Extract Bands</h3><span class="workflow-rail-chip">extract</span></div>
+                </div>
+                <p>Auto-detect the axes frame, mask band pixels in <code>blue_dark</code> / <code>blue</code> / <code>dark</code> mode, and build the CBM / VBM envelopes around the reference energy.</p>
+                <div class="workflow-rail-tags"><span>auto crop</span><span>pixel envelopes</span></div>
+              </div>
+            </article>
+
+            <article class="workflow-rail-item">
+              <div class="workflow-rail-card">
+                <div class="workflow-rail-watermark">03</div>
+                <div class="workflow-rail-head">
+                  <span class="workflow-rail-icon"><svg class="icon"><use href="#i-eye"/></svg></span>
+                  <div class="workflow-rail-title"><h3>Read Axes off Any Figure</h3><span class="workflow-rail-chip">axes_ocr</span></div>
+                </div>
+                <p>For literature figures: OCR the y-axis ticks with arithmetic-progression RANSAC repair, and recognize high-symmetry labels glyph by glyph with eng + ell voting and homoglyph snapping.</p>
+                <div class="workflow-rail-tags"><span>Γ recognition</span><span>lost “−” / “.” repair</span></div>
+              </div>
+            </article>
+
+            <article class="workflow-rail-item">
+              <div class="workflow-rail-card">
+                <div class="workflow-rail-watermark">04</div>
+                <div class="workflow-rail-head">
+                  <span class="workflow-rail-icon"><svg class="icon"><use href="#i-ruler"/></svg></span>
+                  <div class="workflow-rail-title"><h3>Calibrate q↔k per Segment</h3><span class="workflow-rail-chip">calibrate</span></div>
+                </div>
+                <p>Combine structure-side segment boundaries with detected vertical separators into a piecewise-linear map; fall back to OCR of the printed “Path length” when metadata is missing.</p>
+                <div class="workflow-rail-tags"><span>PiecewiseKmap</span><span>separator detection</span></div>
+              </div>
+            </article>
+
+            <article class="workflow-rail-item">
+              <div class="workflow-rail-card">
+                <div class="workflow-rail-watermark">05</div>
+                <div class="workflow-rail-head">
+                  <span class="workflow-rail-icon"><svg class="icon"><use href="#i-fit"/></svg></span>
+                  <div class="workflow-rail-title"><h3>Fit the Band Edges</h3><span class="workflow-rail-chip">fitting</span></div>
+                </div>
+                <p>Snap the vertex to the nearest segment node, truncate windows at segment boundaries, de-bias the vertex energy, then fit E − E₀ = A(k − k₀)² on each side with reliability diagnostics.</p>
+                <div class="workflow-rail-tags"><span>C = 2A</span><span>m*/m₀ = 7.62 / |C|</span></div>
+              </div>
+            </article>
+
+            <article class="workflow-rail-item">
+              <div class="workflow-rail-card">
+                <div class="workflow-rail-watermark">06</div>
+                <div class="workflow-rail-head">
+                  <span class="workflow-rail-icon"><svg class="icon"><use href="#i-filter"/></svg></span>
+                  <div class="workflow-rail-title"><h3>Reject Metals, Screen the Rest</h3><span class="workflow-rail-chip">screening</span></div>
+                </div>
+                <p>Drop metals by Fermi-crossing detection, then apply the band-gap window, optional direct-gap requirement, |C| range and near-linear high-dispersion slope thresholds.</p>
+                <div class="workflow-rail-tags"><span>gap 0.1–0.5 eV default</span><span>|C| ≥ 25 eV·Å²</span></div>
+              </div>
+            </article>
+
+            <article class="workflow-rail-item workflow-rail-item-wide">
+              <div class="workflow-rail-card">
+                <div class="workflow-rail-watermark">07</div>
+                <div class="workflow-rail-head">
+                  <span class="workflow-rail-icon"><svg class="icon"><use href="#i-folder"/></svg></span>
+                  <div class="workflow-rail-title"><h3>Write Traceable Outputs</h3><span class="workflow-rail-chip">output · draw</span></div>
+                </div>
+                <p>Emit English and Chinese CSVs, draw a debug overlay for every figure, and copy hits into per-criterion folders so each candidate can be eyeballed before any expensive follow-up.</p>
+                <div class="workflow-rail-tags"><span>compact + full-detail CSV</span><span>4 hit categories</span></div>
+              </div>
+            </article>
+          </div>
+
+          <div class="workflow-spec-strip">
+            <div class="workflow-spec-card"><div class="workflow-spec-label">Fit window</div><div class="workflow-spec-value">0.10 eV</div></div>
+            <div class="workflow-spec-card"><div class="workflow-spec-label">RMSE gate</div><div class="workflow-spec-value">0.08 eV</div></div>
+            <div class="workflow-spec-card"><div class="workflow-spec-label">Metal cutoff</div><div class="workflow-spec-value">gap ≤ 0.08 eV</div></div>
+            <div class="workflow-spec-card"><div class="workflow-spec-label">Effective mass</div><div class="workflow-spec-value">m*/m₀ = 7.62/|C|</div></div>
+          </div>
+        </section>
+
+        <section class="content-section" id="usage">
+          <div class="section-heading">
+            <span class="section-kicker">Quick Start</span>
+            <h2>Drop data in, answer the prompts, check the overlays</h2>
+            <p><code>band_screen.py</code> runs interactively by default — press Enter to accept each default. Use <code>--no_interactive</code> for scripted batches. Tesseract's Greek model ships with the repo in <code>tessdata/</code>.</p>
+          </div>
+
+          <div class="start-grid">
+            <ol class="start-steps">
+              <li><span>01</span><div><h3>Install the environment</h3><p>Python 3 with the pip packages on the right, plus the system <code>tesseract</code> binary. <code>pymatgen</code> / <code>mp-api</code> are only needed for arbitrary-figure mode.</p></div></li>
+              <li><span>02</span><div><h3>Drop data into <code>input/</code></h3><p>Raw DAT or HDF5 band data is rendered automatically. Literature PNGs go straight into <code>band_images/</code> with their segment JSON; rendering is skipped when <code>input/</code> is empty.</p></div></li>
+              <li><span>03</span><div><h3>Run and review</h3><p>Answer the prompts — gap window, direct-gap, ΔE_fit, |κ| range — then check <code>band_curvature_out/</code>: ranked CSVs plus a fit overlay for every material.</p></div></li>
+            </ol>
+
+            <div class="command-console">
+              <div class="console-head"><span>Local batch</span><small>Terminal</small></div>
+              <pre><code>pip install numpy pandas matplotlib opencv-python \
+    h5py pytesseract pymatgen mp-api
+<span class="cmd-comment"># macOS: brew install tesseract</span>
+<span class="cmd-comment"># Linux: apt install tesseract-ocr</span>
+
+<span class="cmd-accent">python band_screen.py</span></code></pre>
+              <div class="console-note"><svg class="icon"><use href="#i-info"/></svg>Interactive by default — every threshold can also be given as a CLI flag.</div>
+            </div>
+          </div>
+
+          <div class="run-mode-grid">
+            <article class="run-mode-card">
+              <svg class="icon"><use href="#i-zap"/></svg>
+              <div><h3>Scripted batch</h3><code>python band_screen.py --no_interactive --gap_min_eV 0.1 --gap_max_eV 0.5 --direct_gap_only</code></div>
+            </article>
+            <article class="run-mode-card">
+              <svg class="icon"><use href="#i-image"/></svg>
+              <div><h3>Any literature figure</h3><code>python analyze_band_image.py --image fig3b.png --structure POSCAR --mode dark</code><p>JSON + debug overlay; <code>--emit_segments_json</code> feeds it into the batch pipeline.</p></div>
+            </article>
+            <article class="run-mode-card">
+              <svg class="icon"><use href="#i-atom"/></svg>
+              <div><h3>Structure from Materials Project</h3><code>python analyze_band_image.py --image fig.png --mp mp-149</code><p>Needs <code>MP_API_KEY</code>; give <code>--labels "G,X,W,L,G"</code> if label OCR misses.</p></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section" id="outputs">
+          <div class="section-heading">
+            <span class="section-kicker">Outputs</span>
+            <h2>Results that stay traceable to the figure</h2>
+            <p>Every screened material keeps its metrics, diagnostics and annotated figure together under <code>band_curvature_out/</code>.</p>
+          </div>
+
+          <div class="output-grid">
+            <article class="output-card"><svg class="icon"><use href="#i-table"/></svg><div><span>Compact results</span><code>band_curvature_slope_results(_english).csv</code><p>Per material: absolute band-edge curvature for all four directions — CBM / VBM × left / right.</p></div></article>
+            <article class="output-card"><svg class="icon"><use href="#i-book"/></svg><div><span>Full diagnostics</span><code>band_curvature_full_details(_english).csv</code><p>Adds k-calibration mode, vertex snapping, separator-detection deviation and reliability flags per row.</p></div></article>
+            <article class="output-card"><svg class="icon"><use href="#i-eye"/></svg><div><span>Fit overlays</span><code>debug_images/</code><p>Every figure re-drawn with its fitted quadratics, band-edge markers and recovered metrics for eyeball QA.</p></div></article>
+            <article class="output-card output-card-accent"><svg class="icon"><use href="#i-folder"/></svg><div><span>Categorized hits</span><code>selected_debug_images/</code><p>Candidates copied per criterion: gap-window semiconductors, |C| threshold, linear high-dispersion, and <code>final_selected</code>.</p></div></article>
+          </div>
+
+          <div class="scope-note">
+            <svg class="icon"><use href="#i-flask"/></svg>
+            <div><strong>Screening scope</strong><p>ABP outputs image-approximate descriptors intended to rank candidates for downstream study. Keep the debug overlay next to every number, and confirm final claims with calculations on the raw band data.</p></div>
+          </div>
+        </section>
+
+        <section class="content-section" id="modules">
+          <div class="section-heading">
+            <span class="section-kicker">Modules</span>
+            <h2>A small package with two thin entry points</h2>
+            <p>Each module owns one stage of the pipeline and documents it in its docstring; the legacy v7 / v8 single-file scripts remain archived under <code>legacy/</code>.</p>
+          </div>
+
+          <div class="entry-grid">
+            <a class="entry-card" target="_blank" rel="noopener" href="https://github.com/YJNDL/bandscreen">
+              <span class="entry-type">CLI</span><div><small>Batch screening</small><h3>band_screen.py</h3><p>Interactive entry point: render → parse → screen → categorized outputs.</p></div><svg class="icon"><use href="#i-external"/></svg>
+            </a>
+            <a class="entry-card" target="_blank" rel="noopener" href="https://github.com/YJNDL/bandscreen">
+              <span class="entry-type">CLI</span><div><small>Single figure</small><h3>analyze_band_image.py</h3><p>Judge any band figure: axes OCR + structure-side segment lengths.</p></div><svg class="icon"><use href="#i-external"/></svg>
+            </a>
+          </div>
+
+          <div class="module-grid">
+            <article class="module-card"><svg class="icon"><use href="#i-image"/></svg><div><code>render</code><p>DAT / HDF5 → standardized PNGs + segment metadata; the only raw-data stage.</p></div></article>
+            <article class="module-card"><svg class="icon"><use href="#i-scan"/></svg><div><code>extract</code><p>Plot-box detection, band-pixel masks, CBM / VBM envelopes.</p></div></article>
+            <article class="module-card"><svg class="icon"><use href="#i-eye"/></svg><div><code>axes_ocr</code><p>Y-tick OCR with RANSAC repair; Γ-aware high-symmetry label reading.</p></div></article>
+            <article class="module-card"><svg class="icon"><use href="#i-ruler"/></svg><div><code>calibrate</code><p><code>PiecewiseKmap</code> q↔k mapping, separator detection, OCR fallback.</p></div></article>
+            <article class="module-card"><svg class="icon"><use href="#i-fit"/></svg><div><code>fitting</code><p>Fixed-vertex quadratic fits with snapping, truncation and de-biasing.</p></div></article>
+            <article class="module-card"><svg class="icon"><use href="#i-filter"/></svg><div><code>screening</code><p>Metallicity detection, candidate evaluation, direct-gap judgment.</p></div></article>
+            <article class="module-card"><svg class="icon"><use href="#i-atom"/></svg><div><code>kpath</code><p>Structure → physical segment lengths (Å⁻¹), self-tested vs closed forms.</p></div></article>
+            <article class="module-card"><svg class="icon"><use href="#i-layers"/></svg><div><code>draw · output · common</code><p>Debug overlays, EN / CN CSV writers, shared constants and helpers.</p></div></article>
+          </div>
+
+          <div class="environment-strip">
+            <span><strong>Python</strong> 3</span>
+            <span><strong>Vision</strong> OpenCV · Tesseract (eng + ell)</span>
+            <span><strong>Data</strong> pandas · h5py · matplotlib</span>
+            <span><strong>Optional</strong> pymatgen · mp-api</span>
+          </div>
+        </section>
+      </div>
+
+      <footer class="article-footer">
+        <span>ABP · Automated band-topology parsing</span>
+        <a target="_blank" rel="noopener" href="https://github.com/YJNDL/bandscreen">Source on GitHub <svg class="icon"><use href="#i-external"/></svg></a>
+      </footer>
+    </article>
+  </main>
+
+  <script>
+    (function () {
+      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      // Scroll-reveal
+      var revealTargets = document.querySelectorAll(
+        ".section-heading, .value-card, .showcase, .release-banner, .workflow-rail-card, .workflow-spec-card, " +
+        ".start-steps li, .command-console, .run-mode-card, .output-card, .scope-note, .entry-card, .module-card, .environment-strip"
+      );
+      if (!reduceMotion && "IntersectionObserver" in window) {
+        var revealObserver = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("is-visible");
+              revealObserver.unobserve(entry.target);
+            }
+          });
+        }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
+        revealTargets.forEach(function (el, i) {
+          el.classList.add("reveal");
+          el.style.transitionDelay = Math.min(i % 4, 3) * 60 + "ms";
+          revealObserver.observe(el);
+        });
+      }
+
+      // Scrollspy
+      var navLinks = document.querySelectorAll(".page-top .nav a[href^='#']");
+      var sections = [];
+      navLinks.forEach(function (link) {
+        var section = document.querySelector(link.getAttribute("href"));
+        if (section) sections.push({ link: link, section: section });
+      });
+      if (sections.length) {
+        var spyTicking = false;
+        var updateSpy = function () {
+          spyTicking = false;
+          var probe = window.innerHeight * 0.35;
+          var active = null;
+          sections.forEach(function (s) {
+            if (s.section.getBoundingClientRect().top <= probe) active = s;
+          });
+          if (!active) active = sections[0];
+          sections.forEach(function (s) {
+            s.link.classList.toggle("current", s === active);
+          });
+        };
+        window.addEventListener("scroll", function () {
+          if (!spyTicking) { spyTicking = true; requestAnimationFrame(updateSpy); }
+        }, { passive: true });
+        updateSpy();
+      }
+    })();
+  </script>
+</body>
+</html>
